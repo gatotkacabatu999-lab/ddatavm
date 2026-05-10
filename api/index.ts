@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from '../lib/db';
-import { setCorsHeaders, requireAuth, validateBody, checkCORS } from '../lib/auth';
+import { setCorsHeaders, validateBody } from '../lib/auth';
 import {
   calendarEventSchema,
   deliverySchema,
@@ -31,7 +31,6 @@ async function handleCalendar(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, data: events });
     }
     if (req.method === 'POST') {
-      if (!requireAuth(req, res)) return;
       const validated = await validateBody(req, res, calendarEventSchema);
       if (!validated) return;
       const { id, title, event_date, type } = validated;
@@ -44,7 +43,6 @@ async function handleCalendar(req: VercelRequest, res: VercelResponse) {
       return res.status(201).json({ success: true, data: result[0] });
     }
     if (req.method === 'DELETE') {
-      if (!requireAuth(req, res)) return;
       const { id } = req.query;
       if (!id) return res.status(400).json({ success: false, error: 'Event ID required' });
       await sql`DELETE FROM calendar_events WHERE id = ${Number(id)}`;
@@ -73,7 +71,6 @@ async function handleDeliveries(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ success: true, data: deliveries });
     }
     if (req.method === 'POST') {
-      if (!requireAuth(req, res)) return;
       const validated = await validateBody(req, res, deliverySchema);
       if (!validated) return;
       const { tracking_no, recipient_name, address, status, delivery_date, notes } = validated;
@@ -87,7 +84,6 @@ async function handleDeliveries(req: VercelRequest, res: VercelResponse) {
       return res.status(201).json({ success: true, data: result[0] });
     }
     if (req.method === 'DELETE') {
-      if (!requireAuth(req, res)) return;
       const { id } = req.query;
       if (!id) return res.status(400).json({ success: false, error: 'Delivery ID required' });
       await sql`DELETE FROM deliveries WHERE id = ${Number(id)}`;
@@ -302,11 +298,6 @@ async function handleRoutes(req: VercelRequest, res: VercelResponse) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Set CORS headers
   setCorsHeaders(req, res);
-
-  // Check CORS origin
-  if (!checkCORS(req, res)) {
-    return;
-  }
 
   if (req.method === 'OPTIONS') return res.status(204).end();
 

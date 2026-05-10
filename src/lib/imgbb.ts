@@ -8,16 +8,9 @@ export async function uploadImageToImgBB(file: File): Promise<string> {
   const formData = new FormData()
   formData.append("image", file)
 
-  const token = localStorage.getItem("api_token");
-  const headers: Record<string, string> = {};
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
-
   const response = await fetch(`/api/upload`, {
     method: "POST",
     body: formData,
-    headers,
   })
 
   const payload = await response.json().catch(() => null)
