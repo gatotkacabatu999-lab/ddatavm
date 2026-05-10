@@ -1,77 +1,103 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { sql } from '../lib/db';
-
-function setCors(res: VercelResponse) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
+import { setCorsHeaders, requireAuth, validateBody, checkCORS } from '../lib/auth';
+import {
+  calendarEventSchema,
+  deliverySchema,
+  noteSchema,
+  routeSchema,
+  roosterResourceSchema,
+  roosterShiftSchema,
+  routeNoteSchema,
+  planoPageSchema,
+} from '../lib/validations';
+import { handleImageUpload } from './upload';
 
 // ── /api/calendar ─────────────────────────────────────────────────────────────
 async function handleCalendar(req: VercelRequest, res: VercelResponse) {
   if (!process.env.DATABASE_URL) {
     return res.status(500).json({ success: false, error: 'DATABASE_URL not configured' });
   }
-  await sql`CREATE TABLE IF NOT EXISTS calendar_events (
-    id SERIAL PRIMARY KEY, title VARCHAR(500) NOT NULL, event_date DATE NOT NULL,
-    type VARCHAR(50) DEFAULT 'event', created_at TIMESTAMP DEFAULT NOW()
-  )`;
-  await sql`DELETE FROM calendar_events WHERE event_date < CURRENT_DATE - INTERVAL '1 year'`;
+  try {
+    await sql`CREATE TABLE IF NOT EXISTS calendar_events (
+      id SERIAL PRIMARY KEY, title VARCHAR(500) NOT NULL, event_date DATE NOT NULL,
+      type VARCHAR(50) DEFAULT 'event', created_at TIMESTAMP DEFAULT NOW()
+    )`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_calendar_events_date ON calendar_events(event_date)`;
+    await sql`DELETE FROM calendar_events WHERE event_date < CURRENT_DATE - INTERVAL '1 year'`;
 
-  if (req.method === 'GET') {
-    const events = await sql`SELECT id, title, event_date, type FROM calendar_events ORDER BY event_date ASC`;
-    return res.status(200).json({ success: true, data: events });
-  }
-  if (req.method === 'POST') {
-    const { id, title, event_date, type } = req.body;
-    if (!title || !event_date) return res.status(400).json({ success: false, error: 'title dan event_date diperlukan' });
-    let result;
-    if (id) {
-      result = await sql`UPDATE calendar_events SET title=${title}, event_date=${event_date}, type=${type ?? 'event'} WHERE id=${Number(id)} RETURNING id, title, event_date, type`;
-    } else {
-      result = await sql`INSERT INTO calendar_events (title, event_date, type) VALUES (${title}, ${event_date}, ${type ?? 'event'}) RETURNING id, title, event_date, type`;
+    if (req.method === 'GET') {
+      const events = await sql`SELECT id, title, event_date, type FROM calendar_events ORDER BY event_date ASC`;
+      return res.status(200).json({ success: true, data: events });
     }
-    return res.status(200).json({ success: true, data: result[0] });
+    if (req.method === 'POST') {
+      if (!requireAuth(req, res)) return;
+      const validated = await validateBody(req, res, calendarEventSchema);
+      if (!validated) return;
+      const { id, title, event_date, type } = validated;
+      let result;
+      if (id) {
+        result = await sql`UPDATE calendar_events SET title=${title}, event_date=${event_date}, type=${type} WHERE id=${Number(id)} RETURNING id, title, event_date, type`;
+      } else {
+        result = await sql`INSERT INTO calendar_events (title, event_date, type) VALUES (${title}, ${event_date}, ${type}) RETURNING id, title, event_date, type`;
+      }
+      return res.status(201).json({ success: true, data: result[0] });
+    }
+    if (req.method === 'DELETE') {
+      if (!requireAuth(req, res)) return;
+      const { id } = req.query;
+      if (!id) return res.status(400).json({ success: false, error: 'Event ID required' });
+      await sql`DELETE FROM calendar_events WHERE id = ${Number(id)}`;
+      return res.status(200).json({ success: true });
+    }
+    return res.status(405).json({ success: false, error: `Method ${req.method} not allowed` });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Server error';
+    return res.status(500).json({ success: false, error: message });
   }
-  if (req.method === 'DELETE') {
-    const { id } = req.query;
-    if (!id) return res.status(400).json({ success: false, error: 'id diperlukan' });
-    await sql`DELETE FROM calendar_events WHERE id = ${Number(id)}`;
-    return res.status(200).json({ success: true });
-  }
-  return res.status(405).json({ success: false, error: `Method ${req.method} tidak dibenarkan` });
 }
 
 // ── /api/deliveries ───────────────────────────────────────────────────────────
 async function handleDeliveries(req: VercelRequest, res: VercelResponse) {
-  await sql`CREATE TABLE IF NOT EXISTS deliveries (
-    id SERIAL PRIMARY KEY, tracking_no VARCHAR(100) UNIQUE NOT NULL,
-    recipient_name VARCHAR(255), address TEXT, status VARCHAR(50) DEFAULT 'pending',
-    delivery_date DATE, notes TEXT, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
-  )`;
-  if (req.method === 'GET') {
-    const deliveries = await sql`SELECT * FROM deliveries ORDER BY created_at DESC`;
-    return res.status(200).json({ success: true, data: deliveries });
+  try {
+    await sql`CREATE TABLE IF NOT EXISTS deliveries (
+      id SERIAL PRIMARY KEY, tracking_no VARCHAR(100) UNIQUE NOT NULL,
+      recipient_name VARCHAR(255), address TEXT, status VARCHAR(50) DEFAULT 'pending',
+      delivery_date DATE, notes TEXT, created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
+    )`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_deliveries_status ON deliveries(status)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_deliveries_tracking_no ON deliveries(tracking_no)`;
+
+    if (req.method === 'GET') {
+      const deliveries = await sql`SELECT * FROM deliveries ORDER BY created_at DESC LIMIT 1000`;
+      return res.status(200).json({ success: true, data: deliveries });
+    }
+    if (req.method === 'POST') {
+      if (!requireAuth(req, res)) return;
+      const validated = await validateBody(req, res, deliverySchema);
+      if (!validated) return;
+      const { tracking_no, recipient_name, address, status, delivery_date, notes } = validated;
+      const result = await sql`
+        INSERT INTO deliveries (tracking_no, recipient_name, address, status, delivery_date, notes)
+        VALUES (${tracking_no}, ${recipient_name}, ${address}, ${status}, ${delivery_date}, ${notes})
+        ON CONFLICT (tracking_no) DO UPDATE
+          SET recipient_name=EXCLUDED.recipient_name, address=EXCLUDED.address, status=EXCLUDED.status,
+              delivery_date=EXCLUDED.delivery_date, notes=EXCLUDED.notes, updated_at=NOW()
+        RETURNING *`;
+      return res.status(201).json({ success: true, data: result[0] });
+    }
+    if (req.method === 'DELETE') {
+      if (!requireAuth(req, res)) return;
+      const { id } = req.query;
+      if (!id) return res.status(400).json({ success: false, error: 'Delivery ID required' });
+      await sql`DELETE FROM deliveries WHERE id = ${Number(id)}`;
+      return res.status(200).json({ success: true });
+    }
+    return res.status(405).json({ success: false, error: `Method ${req.method} not allowed` });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Server error';
+    return res.status(500).json({ success: false, error: message });
   }
-  if (req.method === 'POST') {
-    const { tracking_no, recipient_name, address, status, delivery_date, notes } = req.body;
-    if (!tracking_no) return res.status(400).json({ success: false, error: 'tracking_no diperlukan' });
-    const result = await sql`
-      INSERT INTO deliveries (tracking_no, recipient_name, address, status, delivery_date, notes)
-      VALUES (${tracking_no}, ${recipient_name}, ${address}, ${status ?? 'pending'}, ${delivery_date}, ${notes})
-      ON CONFLICT (tracking_no) DO UPDATE
-        SET recipient_name=EXCLUDED.recipient_name, address=EXCLUDED.address, status=EXCLUDED.status,
-            delivery_date=EXCLUDED.delivery_date, notes=EXCLUDED.notes, updated_at=NOW()
-      RETURNING *`;
-    return res.status(200).json({ success: true, data: result[0] });
-  }
-  if (req.method === 'DELETE') {
-    const { id } = req.query;
-    if (!id) return res.status(400).json({ success: false, error: 'id diperlukan' });
-    await sql`DELETE FROM deliveries WHERE id = ${Number(id)}`;
-    return res.status(200).json({ success: true });
-  }
-  return res.status(405).json({ success: false, error: `Method ${req.method} tidak dibenarkan` });
 }
 
 // ── /api/notes ────────────────────────────────────────────────────────────────
@@ -274,7 +300,14 @@ async function handleRoutes(req: VercelRequest, res: VercelResponse) {
 
 // ── Main router ───────────────────────────────────────────────────────────────
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  setCors(res);
+  // Set CORS headers
+  setCorsHeaders(req, res);
+
+  // Check CORS origin
+  if (!checkCORS(req, res)) {
+    return;
+  }
+
   if (req.method === 'OPTIONS') return res.status(204).end();
 
   // Extract path segment after /api/
@@ -291,6 +324,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       case 'rooster':     return await handleRooster(req, res);
       case 'route-notes': return await handleRouteNotes(req, res);
       case 'routes':      return await handleRoutes(req, res);
+      case 'upload':      return await handleImageUpload(req, res);
       default:
         return res.status(404).json({ success: false, error: `Unknown endpoint: /api/${segment}` });
     }
