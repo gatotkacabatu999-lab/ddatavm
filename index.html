@@ -57,6 +57,9 @@
 
         const tileMeta = document.querySelector('meta[name="msapplication-TileColor"]');
         if (tileMeta) tileMeta.setAttribute('content', tabColor);
+
+        const statusMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+        if (statusMeta) statusMeta.setAttribute('content', isDark ? 'black-translucent' : 'default');
       })();
     </script>
   </head>

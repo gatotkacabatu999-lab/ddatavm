@@ -57,9 +57,12 @@
 
         const tileMeta = document.querySelector('meta[name="msapplication-TileColor"]');
         if (tileMeta) tileMeta.setAttribute('content', tabColor);
+
+        const statusMeta = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+        if (statusMeta) statusMeta.setAttribute('content', isDark ? 'black-translucent' : 'default');
       })();
     </script>
-    <script type="module" crossorigin src="/assets/main-YrjpR5_K.js"></script>
+    <script type="module" crossorigin src="/assets/main-KAFWaJ9Z.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-icons-DU1K-Hkh.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-radix-CfiFKke4.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-map-CuIiMpI3.js">

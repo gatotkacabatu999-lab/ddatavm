@@ -8,6 +8,16 @@ const META_BG: Record<ColorMode, string> = {
   dark:  "#0b0b0b",
 }
 
+const META_TILE: Record<ColorMode, string> = {
+  light: "#e4ecf3",
+  dark:  "#161b2a",
+}
+
+const APPLE_STATUS_BAR_STYLE: Record<ColorMode, string> = {
+  light: "default",
+  dark:  "black-translucent",
+}
+
 export type AppFont =
   | "system"
   | "inter"
@@ -103,6 +113,16 @@ export function useTheme() {
       document.head.appendChild(meta)
     } else {
       allMetas.forEach(meta => meta.setAttribute("content", metaColor))
+    }
+
+    const tileColor = META_TILE[mode]
+    document.querySelectorAll<HTMLMetaElement>('meta[name="msapplication-TileColor"]').forEach(meta => {
+      meta.setAttribute("content", tileColor)
+    })
+
+    const statusBar = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-status-bar-style"]')
+    if (statusBar) {
+      statusBar.setAttribute("content", APPLE_STATUS_BAR_STYLE[mode])
     }
   }, [mode])
 

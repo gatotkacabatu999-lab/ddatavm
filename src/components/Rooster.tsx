@@ -749,8 +749,8 @@ export function Rooster({ viewMode: viewModeProp = "week" }: { viewMode?: ViewMo
   // Column dates for current view
   const monthDates = useMemo(() => getMonthDates(currentDate), [currentDate])
   const colDates: Date[] = viewMode === "month" ? monthDates : weekDates
-  const staffColWidth = 104
-  const dayColWidth = 86  // same width for both week and month; month scrolls horizontally
+  const staffColWidth = 94
+  const dayColWidth = 78  // same width for both week and month; month scrolls horizontally
 
   // ── Shift CRUD ────────────────────────────────────────────────────────────
 
@@ -1481,7 +1481,7 @@ export function Rooster({ viewMode: viewModeProp = "week" }: { viewMode?: ViewMo
                             className={`border-b border-r border-border align-middle transition-colors ${todayInGroup ? "bg-primary/[0.04]" : ""}`}
                             style={colspan === 1 ? { width: `${dayColWidth}px`, minWidth: `${dayColWidth}px` } : undefined}
                           >
-                            <div className="flex items-center justify-center gap-0.5 flex-wrap px-0.5 py-1" style={{ minHeight: 38 }}>
+                            <div className="flex items-center justify-center gap-0.5 flex-wrap px-0.5 py-1" style={{ minHeight: 34 }}>
                               {first.amShift  && mkBlock(first.amShift)}
                               {first.pmShift  && mkBlock(first.pmShift)}
                               {first.offShift && mkBlock(first.offShift)}
